@@ -1,0 +1,42 @@
+import express from "express";
+import bodyParser from "body-parser";
+import OpenAI from "openai";
+
+const app = express();
+app.use(bodyParser.json());
+
+const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const ASSISTANT_ID = "asst_abc123xyz"; // replace with your Assistant ID
+
+app.post("/api/chat", async (req, res) => {
+  const { message } = req.body;
+
+  // Create a new thread or reuse an existing one if you want persistent history
+  const thread = await client.beta.threads.create();
+
+  // Add the user message
+  await client.beta.threads.messages.create(thread.id, {
+    role: "user",
+    content: message,
+  });
+
+  // Run the Assistant
+  const run = await client.beta.threads.runs.create(thread.id, {
+    assistant_id: ASSISTANT_ID,
+  });
+
+  // Wait until it finishes
+  let runStatus;
+  do {
+    runStatus = await client.beta.threads.runs.retrieve(thread.id, run.id);
+    if (runStatus.status !== "completed") await new Promise(r => setTimeout(r, 1000));
+  } while (runStatus.status !== "completed");
+
+  // Get the response
+  const messages = await client.beta.threads.messages.list(thread.id);
+  const reply = messages.data[0].content[0].text.value;
+
+  res.json({ reply });
+});
+
+app.listen(3000, () => console.log("Server running on port 3000"));
